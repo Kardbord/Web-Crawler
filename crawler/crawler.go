@@ -3,9 +3,11 @@ package crawler
 import (
 	"fmt"
 	"golang.org/x/net/html"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 type UrlStats struct {
@@ -16,14 +18,44 @@ type UrlStats struct {
 
 type Crawler struct {
 	stats map[string]UrlStats
+	isCrawling bool
 }
 
 func NewCrawler() Crawler {
-	return Crawler{make(map[string]UrlStats)}
+	return Crawler{make(map[string]UrlStats), false}
+}
+
+func (cr *Crawler) report(verbose bool) string {
+	if cr.isCrawling {
+		return "Please wait for the Crawler to finish before generating a report"
+	}
+	
+	deadLinkCount := 0
+	urlsVisitedMoreThanOnce := 0
+	verboseReport := ""
+	for _, stat := range cr.stats {
+		if !stat.IsValid { deadLinkCount++ }
+		if stat.VisitCount > 1 { urlsVisitedMoreThanOnce++ }
+		if verbose {
+			verboseReport += fmt.Sprintln("URL:", stat.Url, "Visited:", stat.VisitCount, "Valid:", stat.IsValid)
+		}
+	}
+	
+	rv := fmt.Sprintln("Unique URLs visited:", len(cr.stats))
+	rv += fmt.Sprintln("Dead links encountered:", deadLinkCount)
+	rv += fmt.Sprintln("URLs visited more than once:", urlsVisitedMoreThanOnce)
+	rv += verboseReport
+	
+	return rv
 }
 
 func (cr *Crawler) Crawl(url string, depth int) {
 	ch := make(chan UrlStats)
+	if cr.isCrawling {
+		fmt.Println("This Crawler is already on the prowl...")
+		return
+	}
+	cr.isCrawling = true
 	go cr.crawlRoutine(url, depth, ch)
 	for stat := range ch {
 		if _, found := cr.stats[stat.Url]; found {
@@ -36,10 +68,13 @@ func (cr *Crawler) Crawl(url string, depth int) {
 			cr.stats[stat.Url] = tmp
 		}
 	}
+	cr.isCrawling = false
+	fmt.Println(cr.report(false))
 }
 
 func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
-	
+	fmt.Println("Beginning web crawl...")
+	rand.Seed(time.Now().UTC().UnixNano()) // random seed for sanity output
 	wg := sync.WaitGroup{}
 	
 	// Declare internalCrawl function
@@ -54,7 +89,11 @@ func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
 		if depth <= 0 {
 			return
 		}
-		fmt.Println("Crawling to", url, "at depth", depth)
+		
+		// Some output for sanity
+		if rand.Int() % 5 == 0 {
+			fmt.Printf(".")
+		}
 		
 		// Send our results back home
 		resp, err := http.Get(url)
@@ -79,6 +118,7 @@ func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
 					for _, a := range t.Attr {
 						if a.Key == "href" {
 							if strings.Index(a.Val, "https") != 0 { continue } // let's only follow https links
+							if strings.Contains(a.Val, url) { continue } // let's only follow links outside of the current domain
 							go internalCrawl(a.Val, depth-1, ch)
 						}
 					}
@@ -90,5 +130,6 @@ func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
 	internalCrawl(url, depth, ch)
 	
 	wg.Wait()
+	fmt.Println()
 	close(ch)
 }

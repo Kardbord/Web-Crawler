@@ -5,8 +5,8 @@ import (
 )
 
 func main() {
-	url := "https://www.reddit.com/r/Overwatch/comments/fhuvvb/i_noticed_something_interesting_in_junkrats/"
+	url := "https://www.pinkbike.com"
 	cr := crawler.NewCrawler()
-	cr.Crawl(url, 5)
+	cr.Crawl(url, 3)
 }
 
