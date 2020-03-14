@@ -11,18 +11,18 @@ import (
 )
 
 type UrlStats struct {
-	Url string
-	IsValid bool
-	VisitCount uint64
+	Url             string
+	NoRetrievalErrs bool
+	VisitCount      uint64
 }
 
 type Crawler struct {
-	stats map[string]UrlStats
+	stats map[string]*UrlStats
 	isCrawling bool
 }
 
 func NewCrawler() Crawler {
-	return Crawler{make(map[string]UrlStats), false}
+	return Crawler{make(map[string]*UrlStats), false}
 }
 
 func (cr *Crawler) Crawl(url string, depth int, verbose bool) {
@@ -34,9 +34,9 @@ func (cr *Crawler) Crawl(url string, depth int, verbose bool) {
 	cr.isCrawling = true
 	go cr.crawlRoutine(url, depth, ch)
 	for stat := range ch {
-		if _, found := cr.stats[stat.Url]; found {
+		if _, found := cr.stats[stat.Url]; !found {
 			// newly visited site
-			cr.stats[stat.Url] = UrlStats{stat.Url, stat.IsValid, stat.VisitCount}
+			cr.stats[stat.Url] = &UrlStats{stat.Url, stat.NoRetrievalErrs, stat.VisitCount}
 		} else {
 			// site we've been to before
 			tmp := cr.stats[stat.Url]
@@ -57,15 +57,15 @@ func (cr *Crawler) report(verbose bool) string {
 	urlsVisitedMoreThanOnce := 0
 	verboseReport := ""
 	for _, stat := range cr.stats {
-		if !stat.IsValid { deadLinkCount++ }
+		if !stat.NoRetrievalErrs { deadLinkCount++ }
 		if stat.VisitCount > 1 { urlsVisitedMoreThanOnce++ }
 		if verbose {
-			verboseReport += fmt.Sprintln("URL:", stat.Url, "Visited:", stat.VisitCount, "Valid:", stat.IsValid)
+			verboseReport += fmt.Sprintln("URL:", stat.Url, "Visited:", stat.VisitCount, "Successfully Retrieved:", stat.NoRetrievalErrs)
 		}
 	}
 	
 	rv := fmt.Sprintln("Unique URLs visited:", len(cr.stats))
-	rv += fmt.Sprintln("Dead links encountered:", deadLinkCount)
+	rv += fmt.Sprintln("Unable to retrieve (#URLs):", deadLinkCount)
 	rv += fmt.Sprintln("URLs visited more than once:", urlsVisitedMoreThanOnce)
 	rv += verboseReport
 	
@@ -73,7 +73,8 @@ func (cr *Crawler) report(verbose bool) string {
 }
 
 func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
-	fmt.Println("Beginning web crawl...")
+	fmt.Println("Beginning web crawl at", url)
+	fmt.Println("Crawling...")
 	rand.Seed(time.Now().UTC().UnixNano()) // random seed for sanity output
 	wg := sync.WaitGroup{}
 	
