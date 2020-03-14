@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 )
 
 type UrlStats struct {
@@ -17,11 +16,10 @@ type UrlStats struct {
 
 type Crawler struct {
 	stats map[string]UrlStats
-	mu sync.RWMutex
 }
 
 func NewCrawler() Crawler {
-	return Crawler{make(map[string]UrlStats), sync.RWMutex{}}
+	return Crawler{make(map[string]UrlStats)}
 }
 
 func (cr *Crawler) Crawl(url string, depth int) {
@@ -30,40 +28,14 @@ func (cr *Crawler) Crawl(url string, depth int) {
 	for stat := range ch {
 		if _, found := cr.stats[stat.Url]; found {
 			// newly visited site
-			cr.mu.Lock()
 			cr.stats[stat.Url] = UrlStats{stat.Url, stat.IsValid, stat.VisitCount}
-			cr.mu.Unlock()
 		} else {
 			// site we've been to before
-			cr.mu.RLock()
 			tmp := cr.stats[stat.Url]
 			tmp.VisitCount++
-			cr.mu.RUnlock()
-			cr.mu.Lock()
 			cr.stats[stat.Url] = tmp
-			cr.mu.Unlock()
 		}
-		time.Sleep(50 * time.Millisecond) // Give other writer threads a chance at the mutex
 	}
-}
-
-func (cr *Crawler) hasVisited(url string) bool {
-	cr.mu.RLock()
-	defer cr.mu.RUnlock()
-	if _, ok := cr.stats[url]; ok {
-		return true
-	}
-	return false
-}
-
-func (cr *Crawler) incrVisitCount(url string) {
-	if !cr.hasVisited(url) { return }
-	
-	cr.mu.Lock()
-	defer cr.mu.Unlock()
-	tmp := cr.stats[url]
-	tmp.VisitCount++
-	cr.stats[url] = tmp
 }
 
 func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
@@ -107,10 +79,6 @@ func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
 					for _, a := range t.Attr {
 						if a.Key == "href" {
 							if strings.Index(a.Val, "https") != 0 { continue } // let's only follow https links
-							if cr.hasVisited(url) {
-								cr.incrVisitCount(url)
-								return
-							}
 							go internalCrawl(a.Val, depth-1, ch)
 						}
 					}
