@@ -25,6 +25,29 @@ func NewCrawler() Crawler {
 	return Crawler{make(map[string]UrlStats), false}
 }
 
+func (cr *Crawler) Crawl(url string, depth int, verbose bool) {
+	ch := make(chan UrlStats)
+	if cr.isCrawling {
+		fmt.Println("This Crawler is already on the prowl...")
+		return
+	}
+	cr.isCrawling = true
+	go cr.crawlRoutine(url, depth, ch)
+	for stat := range ch {
+		if _, found := cr.stats[stat.Url]; found {
+			// newly visited site
+			cr.stats[stat.Url] = UrlStats{stat.Url, stat.IsValid, stat.VisitCount}
+		} else {
+			// site we've been to before
+			tmp := cr.stats[stat.Url]
+			tmp.VisitCount++
+			cr.stats[stat.Url] = tmp
+		}
+	}
+	cr.isCrawling = false
+	fmt.Println(cr.report(verbose))
+}
+
 func (cr *Crawler) report(verbose bool) string {
 	if cr.isCrawling {
 		return "Please wait for the Crawler to finish before generating a report"
@@ -47,29 +70,6 @@ func (cr *Crawler) report(verbose bool) string {
 	rv += verboseReport
 	
 	return rv
-}
-
-func (cr *Crawler) Crawl(url string, depth int) {
-	ch := make(chan UrlStats)
-	if cr.isCrawling {
-		fmt.Println("This Crawler is already on the prowl...")
-		return
-	}
-	cr.isCrawling = true
-	go cr.crawlRoutine(url, depth, ch)
-	for stat := range ch {
-		if _, found := cr.stats[stat.Url]; found {
-			// newly visited site
-			cr.stats[stat.Url] = UrlStats{stat.Url, stat.IsValid, stat.VisitCount}
-		} else {
-			// site we've been to before
-			tmp := cr.stats[stat.Url]
-			tmp.VisitCount++
-			cr.stats[stat.Url] = tmp
-		}
-	}
-	cr.isCrawling = false
-	fmt.Println(cr.report(false))
 }
 
 func (cr *Crawler) crawlRoutine(url string, depth int, ch chan UrlStats) {
