@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"webCrawler/crawler"
+	"github.com/TannerKvarfordt/Web-Crawler/crawler"
 )
 
 func main() {
